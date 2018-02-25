@@ -175,9 +175,9 @@ pub trait Delay {
 }
 
 pub trait Hardware {
-    fn rs(&self, bit: bool);
-    fn enable(&self, bit: bool);
-    fn data(&self, data: u8);
+    fn rs(&mut self, bit: bool);
+    fn enable(&mut self, bit: bool);
+    fn data(&mut self, data: u8);
 
     /// Address set up time is 40ns minimum (tAS)
     /// This function should be overridden in case processor is too fast for 40ns to pass.
@@ -196,7 +196,7 @@ pub trait InputCapableHardware: Hardware {
     ///
     /// Note that LCD driver typically uses 5V, so input should be tolerant to 5V when using busy
     /// flag.
-    fn rw(&self, bit: bool);
+    fn rw(&mut self, bit: bool);
 
     /// Read data from the data pins of the LCD (D0-D7 in 8-bit mode and D4-D7 in 4-bit mode)
     fn read_data(&self) -> u8;
@@ -204,11 +204,11 @@ pub trait InputCapableHardware: Hardware {
 
 /// Object implementing HD44780 protocol. Stateless (could be created as many times as needed).
 pub struct Display<'a, HW: 'a + Hardware + Delay> {
-    hw: &'a HW
+    hw: &'a mut HW
 }
 
 trait WaitReady {
-    fn wait_ready(&self, delay: u32);
+    fn wait_ready(&mut self, delay: u32);
 }
 
 impl<'a, HW: Hardware + Delay> core::fmt::Write for Display<'a, HW> {
@@ -231,7 +231,7 @@ impl<'a, HW: Hardware + Delay> fast_fmt::Write for Display<'a, HW> {
 }
 
 impl<'a, HW: Hardware + Delay> Display<'a, HW> {
-    pub fn new(hw: &'a HW) -> Display<'a, HW> {
+    pub fn new(hw: &'a mut HW) -> Display<'a, HW> {
         Display {
             hw
         }
@@ -400,17 +400,17 @@ impl<'a, HW: Hardware + Delay> Display<'a, HW> {
 
 
     // Typical command wait time is 37us
-    fn wait_ready_default(&self) {
+    fn wait_ready_default(&mut self) {
         self.wait_ready(50);
     }
 
-    fn pulse_enable(&self) {
+    fn pulse_enable(&mut self) {
         self.hw.enable(true);
         self.hw.delay_us(1); // minimum delay is 450 ns
         self.hw.enable(false);
     }
 
-    fn send(&self, data: u8) {
+    fn send(&mut self, data: u8) {
         match self.hw.mode() {
             FunctionMode::Bit8 => {
                 self.send_data(data);
@@ -422,20 +422,20 @@ impl<'a, HW: Hardware + Delay> Display<'a, HW> {
         }
     }
 
-    fn send_data(&self, data: u8) {
+    fn send_data(&mut self, data: u8) {
         self.hw.data(data);
         self.pulse_enable();
     }
 }
 
 impl<'a, HW: Hardware + Delay> WaitReady for Display<'a, HW> {
-    default fn wait_ready(&self, delay: u32) {
+    default fn wait_ready(&mut self, delay: u32) {
         self.hw.delay_us(delay);
     }
 }
 
 impl<'a, HW: Hardware + Delay + InputCapableHardware> Display<'a, HW> {
-    fn receive_data(&self) -> u8 {
+    fn receive_data(&mut self) -> u8 {
         self.hw.enable(true);
         self.hw.delay_us(1);
         let data = self.hw.read_data();
@@ -444,7 +444,7 @@ impl<'a, HW: Hardware + Delay + InputCapableHardware> Display<'a, HW> {
         data
     }
 
-    fn receive(&self) -> u8 {
+    fn receive(&mut self) -> u8 {
         match self.hw.mode() {
             FunctionMode::Bit8 => {
                 self.receive_data()
@@ -457,7 +457,7 @@ impl<'a, HW: Hardware + Delay + InputCapableHardware> Display<'a, HW> {
 }
 
 impl<'a, HW: Hardware + Delay + InputCapableHardware> WaitReady for Display<'a, HW> {
-    fn wait_ready(&self, _delay: u32) {
+    fn wait_ready(&mut self, _delay: u32) {
         self.hw.rs(false);
 
         // Read mode
